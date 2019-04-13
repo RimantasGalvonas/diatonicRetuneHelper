@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+		<meta name="author" content="Rimantas Galvonas">
+		<meta name="description" content="A tool to find a way to retune a diatonic instrument with less effort">
+        <title>Diatonic retuning helper</title>
+    </head>
+    <body>
+        <style>
+            #resultsPlace {
+                font-family: monospace;
+                white-space: pre;
+            }
+            .left, .right {
+                display: inline-block;
+                vertical-align: top;
+            }
+            table.gridtable {
+                font-family: verdana,arial,sans-serif;
+                font-size:11px;
+                color:#333333;
+                border-width: 1px;
+                border-color: #666666;
+                border-collapse: collapse;
+            }
+            table.gridtable th {
+                border-width: 1px;
+                padding: 8px;
+                border-style: solid;
+                border-color: #666666;
+                background-color: #dedede;
+            }
+            table.gridtable td {
+                border-width: 1px;
+                padding: 8px;
+                border-style: solid;
+                border-color: #666666;
+                background-color: #ffffff;
+            }
+
+            label {
+                display: block;
+                margin: 5px 0;
+            }
+
+            button {
+                margin: 5px 0;
+            }
+        </style>
+        <div>
+            <div class="left">
+                <div id="inputPlace">
+                    <form>
+                        <span>Current Scale:</span><br>
+                        <input name="current-scale-name" type="radio" value="Am" checked="checked">Am
+                        <input name="current-scale-name" type="radio" value="A#m">A#m
+                        <input name="current-scale-name" type="radio" value="Bm">Bm<br>
+                        <input name="current-scale-name" type="radio" value="Cm">Cm
+                        <input name="current-scale-name" type="radio" value="C#m">C#m
+                        <input name="current-scale-name" type="radio" value="Dm">Dm<br>
+                        <input name="current-scale-name" type="radio" value="D#m">D#m
+                        <input name="current-scale-name" type="radio" value="Em">Em
+                        <input name="current-scale-name" type="radio" value="Fm">Fm<br>
+                        <input name="current-scale-name" type="radio" value="F#m">F#m
+                        <input name="current-scale-name" type="radio" value="Gm">Gm
+                        <input name="current-scale-name" type="radio" value="G#m">G#m<br>
+                        <label for="startstring">Currently scale starts on string number:</label>
+                        <input type="number" id="startstring" value="5"><br>
+                        <label for="startstring">Number of strings:</label>
+                        <input type="number" id="numberofstrings" value="10"><br>
+                        <button type="button" onclick="doEverything()">Find relations to other tunings</button>
+                    </form>
+                </div>
+            </div>
+            <div class="right">
+                <table id="resultstable" class="gridtable">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Scale</th>
+                            <th>Common Notes</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+            <div id="resultsPlace">
+                <div>Old strings layout:</div>
+                <div id="oldstringscontent"></div>
+                <div>New strings layout:</div>
+                <div id="newstringscontent"></div>
+            </div>
+        </div>
+        
+        <script>
+            var scalesArrayMap = { //because why would anyone ever need an associative array
+                'Am'  : 0,
+                'A#m' : 1,
+                'Bm'  : 2,
+                'Cm'  : 3,
+                'C#m' : 4,
+                'Dm'  : 5,
+                'D#m' : 6,
+                'Em'  : 7,
+                'Fm'  : 8,
+                'F#m' : 9,
+                'Gm'  : 10,
+                'G#m' : 11
+            };
+            
+            var scales = [
+                ['A ', 'B ', 'C ', 'D ', 'E ', 'F ', 'G '],
+                ['A#', 'C ', 'C#', 'D#', 'F ', 'F#', 'G#'],
+                ['B ', 'C#', 'D ', 'E ', 'F#', 'G ', 'A '],
+                ['C ', 'D ', 'D#', 'F ', 'G ', 'G#', 'A#'],
+                ['C#', 'D#', 'E ', 'F#', 'G#', 'A ', 'B '],
+                ['D ', 'E ', 'F ', 'G ', 'A ', 'A#', 'C '],
+                ['D#', 'F ', 'F#', 'G#', 'A#', 'B ', 'C#'],
+                ['E ', 'F#', 'G ', 'A ', 'B ', 'C ', 'D '],
+                ['F ', 'G ', 'G#', 'A#', 'C ', 'C#', 'D#'],
+                ['F#', 'G#', 'A ', 'B ', 'C#', 'D ', 'E '],
+                ['G ', 'A ', 'A#', 'C ', 'D ', 'D#', 'F '],
+                ['G#', 'A#', 'B ', 'C#', 'D#', 'E ', 'F#']
+            ];
+
+            function doEverything() {
+                if (isNaN(getStartingString()) || isNaN(getNumberOfStrings())) {
+                    alert('Enter the number of strings and starting string');
+
+                    return;
+                }
+
+                var scaleSimilarities = findScaleSimilarities();
+
+                drawResultsTable(scaleSimilarities);
+            }
+
+            function findScaleSimilarities() {
+                var scaleName = getSelectedScaleName();
+                var thisScale = scales[scalesArrayMap[scaleName]].slice(0); //slice to actually get a clone of the array, ffs javascript
+                
+                var result = [];
+                
+                for (let i = 0; i < 12; i++) {
+                    if (i == scalesArrayMap[scaleName]) {
+                        continue;
+                    }
+
+                    var comparisonScaleName = Object.keys(scalesArrayMap)[i];
+                    var comparisonScale = scales[i].slice(0);
+
+                    var comparisonResultData = {scaleName: comparisonScaleName, result: []};
+                    
+                    for (let timesShifted = 1; timesShifted < 8; timesShifted++) {
+                        comparisonScale.unshift(comparisonScale.pop());
+                        let shiftedScale = comparisonScale;
+                        let matches = getMatchingNotes(thisScale, shiftedScale);
+                        if (matches.length == 0) {
+                            continue;
+                        }
+                        
+                        comparisonResultData.result.push({matches: matches, shiftedScale: shiftedScale});
+                    }
+
+                    result.push(comparisonResultData);
+                }
+                
+                return result;
+            }
+
+            function drawResultsTable(scaleSimilarities) {
+                var table = document.getElementById('resultstable');
+
+                for(var i = table.rows.length - 1; i > 0; i--) {
+                    table.deleteRow(i);
+                }
+
+                scaleSimilarities.forEach(function(data) {
+                    var comparisonScaleName = data.scaleName;
+                    var scaleName = getSelectedScaleName();
+
+                    data.result.forEach(function(data, index) {
+                        var tableRow = table.insertRow(-1);
+
+                        var newButton = document.createElement('button');
+                        newButton.innerHTML = 'Compare';
+                        newButton.setAttribute("scaleName", scaleName); 
+                        newButton.setAttribute("comparisonScaleName", comparisonScaleName);
+                        newButton.setAttribute("variant", index);
+                        newButton.onclick = function (event) {
+                            var currentScaleName = event.target.attributes.scalename.value;
+                            var newScaleName = event.target.attributes.comparisonScaleName.value;
+                            var timesShifted = event.target.attributes.variant.value;
+                            drawScales(currentScaleName, newScaleName, scaleSimilarities, timesShifted);
+                        };
+                        tableRow.insertCell(0).appendChild(newButton);
+                        tableRow.insertCell(1).innerHTML = comparisonScaleName;
+                        tableRow.insertCell(2).innerHTML = data.matches.join(', ');
+                        //buttonsDiv.appendChild(newButtonDiv);
+                    });
+                });
+            }
+            
+            function getMatchingNotes(originalScale, shiftedScale) {
+                var matches = [];
+                
+                for (let i = 0; i < 7; i++) {
+                    if (originalScale[i] == shiftedScale[i]) {
+                        matches.push(originalScale[i]);
+                    }
+                }
+                
+                return matches;
+            }
+            
+            function drawScales(currentScaleName, newScaleName, scaleSimilarities, variantNumber) {
+                if (isNaN(getStartingString()) || isNaN(getNumberOfStrings())) {
+                    alert('Enter the number of strings and starting string');
+
+                    return;
+                }
+                
+                var numberOfStrings = getNumberOfStrings();
+                var currentStartingString = getStartingString();
+                var oldScale = scales[scalesArrayMap[currentScaleName]].slice(0);
+                var newScale = scales[scalesArrayMap[newScaleName]].slice(0);
+
+                var newScaleData = scaleSimilarities.filter(obj => {
+                    return obj.scaleName == newScaleName;
+                })[0];
+
+                var matches = newScaleData.result[variantNumber].matches;
+                var firstMatch = matches[0];
+
+                var offset = 0;
+                if (newScale.indexOf(firstMatch) > oldScale.indexOf(firstMatch)) {
+                    offset = 7 - newScale.indexOf(firstMatch) + oldScale.indexOf(firstMatch);
+                } else {
+                    offset = oldScale.indexOf(firstMatch) - newScale.indexOf(firstMatch);
+                }
+
+                var oldLayout = getStringNotes(currentScaleName, currentStartingString, numberOfStrings);
+                var newLayout = getStringNotes(newScaleName, currentStartingString + offset, numberOfStrings);
+
+                document.getElementById('oldstringscontent').innerHTML = oldLayout.join(' ');
+                document.getElementById('newstringscontent').innerHTML = newLayout.join(' ');
+				document.getElementById('resultsPlace').scrollIntoView();
+            }
+
+            function getStringNotes(scaleName, stringOnWhichScaleBegins, numberOfStrings) {
+                var thisScale = scales[scalesArrayMap[scaleName]].slice(0);
+                
+                for (let i = 1; i < stringOnWhichScaleBegins; i++){
+                    thisScale.unshift(thisScale.pop());
+                }
+
+                while (thisScale.length < numberOfStrings) {
+                    thisScale = thisScale.concat(thisScale);
+                }
+                
+                thisScale = thisScale.slice(0, numberOfStrings);
+                
+                return thisScale;
+            }
+
+            function getSelectedScaleName() {
+                return document.querySelectorAll('input[name="current-scale-name"]:checked')[0].value;
+            }
+
+            function getNumberOfStrings() {
+                return parseInt(document.getElementById('numberofstrings').value);
+            }
+
+            function getStartingString() {
+                return parseInt(document.getElementById('startstring').value);
+            }
+        </script>
+    </body>
+</html>
